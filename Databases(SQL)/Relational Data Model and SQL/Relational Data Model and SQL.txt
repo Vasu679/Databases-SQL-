@@ -1,0 +1,151 @@
+-- Part One: The subscription service
+
+-- Member
+
+CREATE TABLE member 
+(
+    mid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    passhash INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    address VARCHAR(128) NOT NULL
+);
+
+CREATE TABLE organization 
+(
+	omid INT NOT NULL REFERENCES MEMBER(mid),
+    type VARCHAR(100) NOT NULL,
+    PRIMARY KEY(omid)
+);
+
+CREATE TABLE personal 
+(
+    pmid INT NOT NULL REFERENCES MEMBER(mid),
+    PRIMARY KEY(pmid)
+);
+
+--Subscription 
+
+CREATE TABLE subscription
+(
+	mid INT NOT NULL,
+	startyear INT NOT NULL,
+	startmonth INT NOT NULL,
+	date DATE NOT NULL DEFAULT CURRENT_DATE,
+	CHECK((999 < startyear <= YEAR(date)) AND (1 <= startmonth <= MONTH(date))),
+	FOREIGN KEY (mid) REFERENCES MEMBER,
+	PRIMARY KEY (mid, startyear, startmonth)
+);
+
+CREATE TABLE prepaid 
+(
+    mid INT NOT NULL,
+    startyear INT NOT NULL,
+    startmonth INT NOT NULL,
+    charges DECIMAL NOT NULL,
+    FOREIGN KEY(mid, startyear, startmonth) REFERENCES SUBSCRIPTION,
+    PRIMARY KEY(mid, startyear, startmonth)
+);
+
+CREATE TABLE longterm 
+(
+    mid INT NOT NULL,
+    startyear INT NOT NULL,
+    startmonth INT NOT NULL,
+    tier INT NOT NULL,
+    CHECK(tier >= 0),
+    FOREIGN KEY(mid, startyear, startmonth) REFERENCES SUBSCRIPTION,
+    PRIMARY KEY(mid, startyear, startmonth)
+);
+
+-- Payment
+
+CREATE TABLE payment 
+(
+    mid INT NOT NULL,
+    startyear INT NOT NULL,
+    startmonth INT NOT NULL,
+    term INT NOT NULL,
+    CHECK(term>=1),
+    pmid INT REFERENCES PERSONAL(mid),
+    FOREIGN KEY(mid, startyear, startmonth) REFERENCES SUBSCRIPTION,
+    PRIMARY KEY(mid, startyear, startmonth)
+);
+
+--IsRep
+
+CREATE TABLE isrep (
+    omid INT NOT NULL REFERENCES personal(pmid),
+    pmid INT NOT NULL REFERENCES organization(omid),
+    FOREIGN KEY (omid, pmid) REFERENCES ISREP(omid, pmid),
+    PRIMARY KEY (omid, pmid)
+);
+
+
+
+-- Part Two: The Donation System
+
+-- Donor Event
+
+CREATE TABLE donorevent (
+    eid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    date DATE NOT NULL,
+    description CLOB NOT NULL,
+    private BOOLEAN NOT NULL
+);
+
+-- Donor Invite
+
+CREATE TABLE donorinvite (
+    eid INT NOT NULL REFERENCES donorevent(eid),
+    mid INT NOT NULL REFERENCES member(mid),
+    confirmed BOOLEAN NOT NULL,
+    amount INT NOT NULL,
+    CHECK (amount >= 0),
+    referredBy INT REFERENCES member(mid),
+    CHECK (referredBy <> mid),
+    PRIMARY KEY(eid, mid)
+);
+
+-- Referrals
+
+CREATE VIEW referrals AS
+SELECT di.eid, di.mid, m.name AS memberName, di.mid AS rid, m2.name AS referredName
+FROM DONORINVITE  di
+JOIN MEMBER m ON di.mid = m.mid
+JOIN MEMBER m2 ON di.referredBy IS NOT NULL AND di.referredBy = m2.mid;
+
+--Donation
+
+CREATE TABLE donation (
+    donid INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    eid INT NOT NULL REFERENCES donorevent(eid),
+    mid INT NOT NULL REFERENCES member(mid),
+    amount DECIMAL NOT NULL,
+    CHECK (amount >= 0),
+    attributedTo INT REFERENCES member(mid),
+    attributionMsg CLOB
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,186 @@
+-- Assignment 2 (Virendra Jethra)
+
+
+-- Query 1
+
+SELECT * FROM USER WHERE RNAME IS NOT NULL ORDER BY RNAME, NAME;
+
+-- Clarifications: 
+-- The query selects everthing from the user table where the real name is not empty and orders it by the realname.
+-- If two authors have the same real name,then order them on their username
+
+
+-- Query 2
+
+SELECT DISTINCT aid, category FROM FMENTION, FCATEGORY WHERE FCATEGORY.FID = FMENTION.FID;
+
+-- Clarifications: 
+-- The query selects unique aid and category from the fmention and fcategory table where the fcategory's fid is same as fmention's fid
+
+
+-- Query 3
+
+SELECT u.id AS uid, a.id AS aid
+FROM USER u
+JOIN ARTICLE a ON (u.id, a.id) NOT IN (
+    SELECT c.uid, c.aid FROM COMMENT c
+);
+
+-- Clarifications: 
+-- The query selects user id and article id from the corresponding tables and selects them such that uid and aid are not in comment table
+
+
+-- Query 4
+
+SELECT a.id AS aid, f.id AS fid FROM ARTICLE a
+JOIN FILM f ON (a.id, f.id) NOT IN (SELECT fm.aid, fm.fid FROM FMENTION fm) 
+AND EXISTS (
+	SELECT * FROM FCATEGORY fc
+	WHERE (a.id, fc.fid) IN (SELECT fm.aid, fm.fid FROM FMENTION fm) 
+	AND NOT EXISTS ((
+		SELECT fc2.category FROM FCATEGORY fc2
+		WHERE fc.fid = fc2.fid
+		EXCEPT
+		SELECT fc1.category FROM FCATEGORY fc1
+		WHERE f.id = fc1.fid
+		)
+		UNION
+		(
+		SELECT fc1.category FROM FCATEGORY fc1
+		WHERE f.id = fc1.fid
+		EXCEPT
+		SELECT fc2.category FROM FCATEGORY fc2
+		WHERE fc.fid = fc2.fid
+		))
+);
+
+-- Clarifications:
+-- The query selects article id and film id from the corresponding tables making sure the id's is not in the fmention table.
+-- The exists checks if there is a category in the fcategory table for the article and film that is being considered in the main select statement
+-- and is in the fmention table. The UNION operator is used to combine the result sets of two SELECT statements that check for categories that are in the fcategory table 
+-- for the current film and not in the fcategory table for the film mentioned in the fmention table, and vice versa.
+
+
+-- Query 5
+
+SELECT a.id AS aid, a.title,u.rname AS name,
+	(SELECT COUNT(DISTINCT c1.id)
+	FROM COMMENT c1
+	WHERE c1.aid = a.id AND c1.on_id IS NULL) AS tcount,
+	(SELECT COUNT(*)
+	FROM COMMENT c2
+	WHERE c2.aid = a.id) AS rcount
+FROM ARTICLE a
+JOIN user u ON a.aid = u.id
+ORDER BY a.rtime DESC;
+
+-- Clarifications:  
+-- The query selects article table with the user table on the aid column of the article table and the id column of the user table, to get the real name of the author of each article.
+-- It then calculates two counts: tcount and rcount. The tcount represents the number of distinct top-level comments (comments that are not a response to another comment) on each article, 
+-- and it is calculated using a subquery that counts the number of distinct comments in the comment table where the aid column is equal to the id column of the current article in the main query and the on_id column is NULL.
+-- The rcount represents the total number of comments on each article, and it is calculated using another subquery that counts the number of comments in the comment table where the aid column is equal to the id column 
+-- of the current article in the main query. Finally, the query selects the article id, title, author's real name, tcount, and rcount columns and orders the results by the rtime column of the article table in descending
+-- order, so that the most recently reviewed articles appear first.
+ 
+
+-- Query 6
+                                                  
+WITH UserCategoryScore AS (
+  SELECT uid, fcategory.category, COUNT(DISTINCT fmention.aid) AS score
+  FROM COMMENT
+  JOIN fmention ON COMMENT.aid = fmention.aid
+  JOIN film ON fmention.fid = film.id
+  JOIN fcategory ON film.id = fcategory.fid
+  GROUP BY uid, fcategory.category
+)
+SELECT uid, category, score
+FROM UserCategoryScore
+WHERE score = (
+    SELECT MAX(score) 
+    FROM UserCategoryScore usc 
+    WHERE usc.uid = UserCategoryScore.uid
+);
+   
+-- Clarifications:
+-- The query start with UserCategoryScore that calculates the user id (uid), category of the film, and the number of articles written by each user on that category. 
+-- The calculation is done by joining multiple tables such as comment, fmention, film, and fcategory. 
+-- The "GROUP BY" clause is used to group the data by the user id and category, and the COUNT function is used to count the number of distinct articles for each user and category.
+--Finally, the main query selects the user id, category, and score from the UserCategoryScore and only display the rows where the score is equal to the maximum score for each user.
+
+
+-- Query 7                                                 
+                                                       
+WITH CategorySimilarity (category, fcategory, fid) AS (
+	SELECT fc1.category, fc2.category, COUNT(fc1.fid) 
+	FROM FCATEGORY fc1, FCATEGORY fc2
+	WHERE fc1.fid = fc2.fid 
+	AND fc1.category <> fc2.category
+	GROUP BY fc1.category, fc2.category
+)
+SELECT cs.category, cs.fcategory, film.id fid
+FROM CategorySimilarity cs, FILM film
+WHERE film.id NOT IN (
+	SELECT c.fid FROM FCATEGORY c
+	WHERE c.category = cs.category
+)
+AND film.id IN (
+	SELECT c.fid FROM FCATEGORY c
+	WHERE c.category = cs.fcategory
+)
+AND cs.fid >= ALL (
+	SELECT cs1.fid FROM CategorySimilarity cs1
+	WHERE cs.category = cs1.category
+)
+
+-- Clarifications:                                                 
+-- The query first creates a derived table called CategorySimilarity which contains the count of films in each category that have the same fid (film identifier). 
+-- The SELECT statement then selects the category, fcategory, and fid from the CategorySimilarity table and the FILM table. 
+-- The WHERE clause filters the results by only selecting films that are not in the same category as the selected category and that are in the category of the selected fcategory.
+-- Finally, the query selects the result with the highest count of films in the fcategory.
+       
+
+-- Query 8
+
+SELECT totalAverage.id 
+FROM (SELECT u.id, CAST(SUM(UserResponses.cCount) AS DECIMAL)/
+		 (SELECT COUNT(*) FROM COMMENT c WHERE c.uid = UserResponses.uid) AS avg 
+		 FROM (
+			SELECT c2.uid, COUNT(c1.on_id) AS cCount 
+			FROM COMMENT c1 
+			JOIN COMMENT c2 ON c1.on_id = c2.ID
+			GROUP BY c2.uid, c1.on_id
+			HAVING c1.on_id IS NOT NULL
+		 )UserResponses
+		JOIN USER u
+		ON u.id = UserResponses.uid
+		GROUP BY u.id, UserResponses.uid
+	)totalAverage 
+	WHERE totalAverage.avg >= 2.0 * (
+		SELECT CAST(SUM(UserResponses.cCount) AS DECIMAL)/(SELECT COUNT(*) FROM COMMENT) 
+		FROM (
+			SELECT c.on_id, COUNT(c.on_id) AS cCount FROM COMMENT c
+			GROUP BY c.on_id
+			HAVING c.on_id IS NOT NULL
+		)UserResponses
+	);
+
+-- Clarifications: 
+-- The query starts with a subquery (totalAverage) that calculates the average number of responses for each user. 
+-- It does so by first joining the Comment table with itself on the on_id field and counting the number of responses for each comment (c1). 
+-- Then it joins the result with the User table to get the id of the user, and calculates the average number of responses by dividing the total number of responses by the total number of comments written by the user.
+-- The main query then selects only the id from the totalAverage subquery where the average number of responses is greater than or equal to 2 times the overall average number of responses calculated in another subquery.
+-- The final result will be a list of id's of users who have an average number of responses to their comments that is greater than or equal to 2 times the average number of responses for all users in the database.
+
+-- Query 9
+
+SELECT fid, sum(sign(score - prev_score)) AS ts
+FROM (
+  SELECT a1.aid, a1.fid, a1.score, a2.score AS prev_score
+  FROM fmention a1
+  LEFT JOIN fmention a2 ON a1.aid = a2.aid AND a1.fid = a2.fid AND a1.rtime > a2.rtime
+  WHERE a2.rtime IS NOT NULL
+) subq
+GROUP BY fid
+
+-- Clarifications: 
+-- This is not the correct solution but I have tired my best here
